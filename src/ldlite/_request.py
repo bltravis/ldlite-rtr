@@ -1,13 +1,23 @@
-import requests
+import httpx
+import folioclient
 
 
-def _request_get(url, params, headers, timeout, max_retries):
-    r = 0
-    while r < max_retries:
-        try:
-            return requests.get(url, params=params, headers=headers, timeout=timeout)
-        except requests.exceptions.Timeout:
-            pass
-        r += 1
-    return requests.get(url, params=params, headers=headers, timeout=timeout)
-
+def _request_get(
+    url, params, timeout, max_retries, folio_client: folioclient.FolioClient
+):
+    with folio_client.get_folio_http_client() as http_client:
+        r = 0
+        while r < max_retries:
+            try:
+                return http_client.get(
+                    url,
+                    params=params,
+                    headers=folio_client.okapi_headers,
+                    timeout=timeout,
+                )
+            except httpx.TimeoutException:
+                pass
+            r += 1
+        return http_client.get(
+            url, params=params, headers=folio_client.okapi_headers, timeout=timeout
+        )
