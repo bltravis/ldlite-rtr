@@ -3,4 +3,7 @@ dist
 ldlite.egg-info
 tmp
 .idea
-
+.venv
+*.lock
+*.*_old
+.vscode

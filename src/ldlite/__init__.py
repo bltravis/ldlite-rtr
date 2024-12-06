@@ -40,9 +40,10 @@ import sqlite3
 import sys
 
 import duckdb
+
 # import pandas
 import psycopg2
-import requests
+import folioclient
 from tqdm import tqdm
 
 from ._csv import _to_csv
@@ -50,6 +51,7 @@ from ._jsonx import Attr
 from ._jsonx import _drop_json_tables
 from ._jsonx import _transform_json
 from ._query import _query_dict
+
 # from ._camelcase import _decode_camel_case
 from ._request import _request_get
 from ._select import _select
@@ -59,6 +61,7 @@ from ._sqlx import _encode_sql_str
 from ._sqlx import _json_type
 from ._sqlx import _sqlid
 from ._sqlx import _strip_schema
+
 # from src.ldlite._csv import *
 from ._xlsx import _to_xlsx
 
@@ -74,6 +77,7 @@ from ._xlsx import _to_xlsx
 #             cur.execute('ALTER TABLE ' + _sqlid(_stage_table(t)) + ' RENAME TO ' + _sqlid(_strip_schema(t)))
 #     finally:
 #         cur.close()
+
 
 class LDLite:
 
@@ -92,13 +96,14 @@ class LDLite:
         self._quiet = False
         self.dbtype: _DBType = _DBType.UNDEFINED
         self.db = None
-        self.login_token = None
-        self.okapi_url = None
+        # self.login_token = None
+        # self.okapi_url = None
         self.okapi_tenant = None
         self.okapi_user = None
         self.okapi_password = None
         self._okapi_timeout = 60
         self._okapi_max_retries = 2
+        self.folio_client: folioclient.FolioClient = None
 
     def _set_page_size(self, page_size):
         self.page_size = page_size
@@ -138,7 +143,7 @@ class LDLite:
 
         """
         self.dbtype = _DBType.DUCKDB
-        fn = filename if filename is not None else ':memory:'
+        fn = filename if filename is not None else ":memory:"
         self.db = duckdb.connect(database=fn)
         return self.db
 
@@ -161,7 +166,7 @@ class LDLite:
 
     def experimental_connect_db_sqlite(self, filename=None):
         """Connects to an embedded SQLite database for storing data.
-        
+
         This method is experimental and may not be supported in future versions.
 
         The optional *filename* designates a local file containing the SQLite
@@ -178,34 +183,35 @@ class LDLite:
 
         """
         self.dbtype = _DBType.SQLITE
-        fn = filename if filename is not None else ':memory:'
+        fn = filename if filename is not None else ":memory:"
         self.db = sqlite3.connect(fn)
         _autocommit(self.db, self.dbtype, True)
         return self.db
 
+    @property
+    def login_token(self):
+        return self.folio_client.okapi_token
+
+    @property
+    def okapi_url(self):
+        return self.folio_client.okapi_url
+
     def _login(self):
         if self._verbose:
-            print('ldlite: logging in to okapi', file=sys.stderr)
-        hdr = {'X-Okapi-Tenant': self.okapi_tenant,
-               'Content-Type': 'application/json'}
-        data = {'username': self.okapi_user,
-                'password': self.okapi_password}
-        resp = requests.post(self.okapi_url + '/authn/login', headers=hdr, data=json.dumps(data),
-                             timeout=self._okapi_timeout)
-        if resp.status_code != 201:
-            raise RuntimeError('HTTP response status code: ' + str(resp.status_code))
-        if 'x-okapi-token' in resp.headers:
-            self.login_token = resp.headers['x-okapi-token']
-        else:
-            raise RuntimeError('authentication service did not return a login token')
+            print("ldlite: logging in to okapi", file=sys.stderr)
+        self.folio_client.login()
 
     def _check_okapi(self):
         if self.login_token is None:
-            raise RuntimeError('connection to okapi not configured: use connect_okapi()')
+            raise RuntimeError(
+                "connection to okapi not configured: use connect_okapi()"
+            )
 
     def _check_db(self):
         if self.db is None:
-            raise RuntimeError('database connection not configured: use connect_db() or connect_db_postgresql()')
+            raise RuntimeError(
+                "database connection not configured: use connect_db() or connect_db_postgresql()"
+            )
 
     def connect_okapi(self, url, tenant, user, password):
         """Connects to an Okapi instance with a user name and password.
@@ -221,30 +227,7 @@ class LDLite:
                              password='admin')
 
         """
-        if not url.startswith('https://'):
-            raise ValueError('url must begin with "https://"')
-        self.okapi_url = url.rstrip('/')
-        self.okapi_tenant = tenant
-        self.okapi_user = user
-        self.okapi_password = password
-        self._login()
-
-    def connect_okapi_token(self, url, tenant, token):
-        """Connects to an Okapi instance with a login token.
-
-        The *url*, *tenant*, and *token* settings are Okapi-specific
-        connection parameters.
-
-        Example:
-
-            ld.connect_okapi_token(url='https://folio-snapshot-okapi.dev.folio.org',
-                                   tenant='diku',
-                                   token=developer_token)
-
-        """
-        self.okapi_url = url.rstrip('/')
-        self.okapi_tenant = tenant
-        self.login_token = token
+        self.folio_client = folioclient.FolioClient(url, tenant, user, password)
 
     def drop_tables(self, table):
         """Drops a specified table and any accompanying tables that were output from JSON transformation.
@@ -258,13 +241,13 @@ class LDLite:
 
         """
         _autocommit(self.db, self.dbtype, True)
-        schema_table = table.strip().split('.')
+        schema_table = table.strip().split(".")
         if len(schema_table) < 1 or len(schema_table) > 2:
-            raise ValueError('invalid table name: ' + table)
+            raise ValueError("invalid table name: " + table)
         self._check_db()
         cur = self.db.cursor()
         try:
-            cur.execute('DROP TABLE IF EXISTS ' + _sqlid(table))
+            cur.execute("DROP TABLE IF EXISTS " + _sqlid(table))
         except (RuntimeError, psycopg2.Error):
             pass
         finally:
@@ -341,19 +324,21 @@ class LDLite:
 
         """
         if transform is not None:
-            raise ValueError('transform is no longer supported: use json_depth=0 to disable JSON transformation')
-        schema_table = table.split('.')
+            raise ValueError(
+                "transform is no longer supported: use json_depth=0 to disable JSON transformation"
+            )
+        schema_table = table.split(".")
         if len(schema_table) != 1 and len(schema_table) != 2:
-            raise ValueError('invalid table name: ' + table)
+            raise ValueError("invalid table name: " + table)
         if json_depth is None or json_depth < 0 or json_depth > 4:
-            raise ValueError('invalid value for json_depth: ' + str(json_depth))
+            raise ValueError("invalid value for json_depth: " + str(json_depth))
         self._check_okapi()
         self._check_db()
         if len(schema_table) == 2 and self.dbtype == _DBType.SQLITE:
-            table = schema_table[0] + '_' + schema_table[1]
+            table = schema_table[0] + "_" + schema_table[1]
             schema_table = [table]
         if not self._quiet:
-            print('ldlite: querying: ' + path, file=sys.stderr)
+            print("ldlite: querying: " + path, file=sys.stderr)
         querycopy = _query_dict(query)
         _drop_json_tables(self.db, table)
         _autocommit(self.db, self.dbtype, False)
@@ -361,38 +346,55 @@ class LDLite:
             cur = self.db.cursor()
             try:
                 if len(schema_table) == 2:
-                    cur.execute('CREATE SCHEMA IF NOT EXISTS ' + _sqlid(schema_table[0]))
-                cur.execute('DROP TABLE IF EXISTS ' + _sqlid(table))
+                    cur.execute(
+                        "CREATE SCHEMA IF NOT EXISTS " + _sqlid(schema_table[0])
+                    )
+                cur.execute("DROP TABLE IF EXISTS " + _sqlid(table))
                 cur.execute(
-                    'CREATE TABLE ' + _sqlid(table) + '(__id integer, jsonb ' + _json_type(self.dbtype) + ')')
+                    "CREATE TABLE "
+                    + _sqlid(table)
+                    + "(__id integer, jsonb "
+                    + _json_type(self.dbtype)
+                    + ")"
+                )
             finally:
                 cur.close()
             self.db.commit()
             # First get total number of records
-            hdr = {'X-Okapi-Tenant': self.okapi_tenant, 'X-Okapi-Token': self.login_token}
-            querycopy['offset'] = '0'
-            querycopy['limit'] = '1'
-            resp = _request_get(self.okapi_url + path, params=querycopy, headers=hdr, timeout=self._okapi_timeout,
-                                max_retries=self._okapi_max_retries)
+            querycopy["limit"] = "0"
+            # print(f"{self.okapi_url}{path}")
+            resp = _request_get(
+                self.okapi_url + path,
+                params=querycopy,
+                timeout=self._okapi_timeout,
+                max_retries=self._okapi_max_retries,
+                folio_client=self.folio_client,
+            )
             if resp.status_code == 401:
                 # Retry
                 self._login()
-                hdr = {'X-Okapi-Tenant': self.okapi_tenant, 'X-Okapi-Token': self.login_token}
-                resp = _request_get(self.okapi_url + path, params=querycopy, headers=hdr, timeout=self._okapi_timeout,
-                                    max_retries=self._okapi_max_retries)
+                resp = _request_get(
+                    self.okapi_url + path,
+                    params=querycopy,
+                    timeout=self._okapi_timeout,
+                    max_retries=self._okapi_max_retries,
+                    folio_client=self.folio_client,
+                )
             if resp.status_code != 200:
-                raise RuntimeError('HTTP response status code: ' + str(resp.status_code))
+                raise RuntimeError(
+                    "HTTP response status code: " + str(resp.status_code)
+                )
             try:
                 j = resp.json()
             except (json.JSONDecodeError, ValueError) as e:
-                raise RuntimeError('received server response: ' + resp.text) from e
-            if 'totalRecords' in j:
-                total_records = j['totalRecords']
+                raise RuntimeError("received server response: " + resp.text) from e
+            if "totalRecords" in j:
+                total_records = j["totalRecords"]
             else:
                 total_records = -1
             total = total_records if total_records is not None else 0
             if self._verbose:
-                print('ldlite: estimated row count: ' + str(total), file=sys.stderr)
+                print("ldlite: estimated row count: " + str(total), file=sys.stderr)
             # Read result pages
             count = 0
             page = 0
@@ -400,26 +402,48 @@ class LDLite:
             pbartotal = 0
             if not self._quiet:
                 if total == -1:
-                    pbar = tqdm(desc='reading', leave=False, mininterval=3, smoothing=0, colour='#A9A9A9',
-                                bar_format='{desc} {elapsed} {bar}{postfix}')
+                    pbar = tqdm(
+                        desc="reading",
+                        leave=False,
+                        mininterval=3,
+                        smoothing=0,
+                        colour="#A9A9A9",
+                        bar_format="{desc} {elapsed} {bar}{postfix}",
+                    )
                 else:
-                    pbar = tqdm(desc='reading', total=total, leave=False, mininterval=3, smoothing=0, colour='#A9A9A9',
-                                bar_format='{desc} {bar}{postfix}')
+                    pbar = tqdm(
+                        desc="reading",
+                        total=total,
+                        leave=False,
+                        mininterval=3,
+                        smoothing=0,
+                        colour="#A9A9A9",
+                        bar_format="{desc} {bar}{postfix}",
+                    )
             cur = self.db.cursor()
             try:
                 while True:
                     offset = page * self.page_size
                     lim = self.page_size
-                    querycopy['offset'] = str(offset)
-                    querycopy['limit'] = str(lim)
-                    resp = _request_get(self.okapi_url + path, params=querycopy, headers=hdr,
-                                        timeout=self._okapi_timeout, max_retries=self._okapi_max_retries)
+                    querycopy["offset"] = str(offset)
+                    querycopy["limit"] = str(lim)
+                    resp = _request_get(
+                        self.okapi_url + path,
+                        params=querycopy,
+                        timeout=self._okapi_timeout,
+                        max_retries=self._okapi_max_retries,
+                        folio_client=self.folio_client,
+                    )
                     if resp.status_code != 200:
-                        raise RuntimeError('HTTP response status code: ' + str(resp.status_code))
+                        raise RuntimeError(
+                            "HTTP response status code: " + str(resp.status_code)
+                        )
                     try:
                         j = resp.json()
-                    except (json.JSONDecodeError, ValueError) as e:
-                        raise RuntimeError('received server response: ' + resp.text) from e
+                    except ValueError as e:
+                        raise RuntimeError(
+                            "received server response: " + resp.text
+                        ) from e
                     if isinstance(j, dict):
                         data = list(j.values())[0]
                     else:
@@ -429,8 +453,14 @@ class LDLite:
                         break
                     for d in data:
                         cur.execute(
-                            'INSERT INTO ' + _sqlid(table) + ' VALUES(' + str(count + 1) + ',' + _encode_sql_str(
-                                self.dbtype, json.dumps(d, indent=4)) + ')')
+                            "INSERT INTO "
+                            + _sqlid(table)
+                            + " VALUES("
+                            + str(count + 1)
+                            + ","
+                            + _encode_sql_str(self.dbtype, json.dumps(d, indent=4))
+                            + ")"
+                        )
                         count += 1
                         if not self._quiet:
                             if pbartotal + 1 > total:
@@ -452,26 +482,41 @@ class LDLite:
             newtables = [table]
             newattrs = {}
             if json_depth > 0:
-                jsontables, jsonattrs = _transform_json(self.db, self.dbtype, table, count, self._quiet, json_depth)
+                jsontables, jsonattrs = _transform_json(
+                    self.db, self.dbtype, table, count, self._quiet, json_depth
+                )
                 newtables += jsontables
                 newattrs = jsonattrs
                 for t, attrs in newattrs.items():
-                    newattrs[t]['__id'] = Attr('__id', 'bigint')
-                newattrs[table] = {'__id': Attr('__id', 'bigint')}
+                    newattrs[t]["__id"] = Attr("__id", "bigint")
+                newattrs[table] = {"__id": Attr("__id", "bigint")}
         finally:
             _autocommit(self.db, self.dbtype, True)
         # Create indexes
         if self.dbtype == 2:
             index_total = sum(map(len, newattrs.values()))
             if not self._quiet:
-                pbar = tqdm(desc='indexing', total=index_total, leave=False, mininterval=3, smoothing=0,
-                            colour='#A9A9A9', bar_format='{desc} {bar}{postfix}')
+                pbar = tqdm(
+                    desc="indexing",
+                    total=index_total,
+                    leave=False,
+                    mininterval=3,
+                    smoothing=0,
+                    colour="#A9A9A9",
+                    bar_format="{desc} {bar}{postfix}",
+                )
                 pbartotal = 0
             for t, attrs in newattrs.items():
                 for attr in attrs.values():
                     cur = self.db.cursor()
                     try:
-                        cur.execute('CREATE INDEX ON ' + _sqlid(t) + ' (' + _sqlid(attr.name) + ')')
+                        cur.execute(
+                            "CREATE INDEX ON "
+                            + _sqlid(t)
+                            + " ("
+                            + _sqlid(attr.name)
+                            + ")"
+                        )
                     except (RuntimeError, psycopg2.Error):
                         pass
                     finally:
@@ -483,7 +528,7 @@ class LDLite:
                 pbar.close()
         # Return table names
         if not self._quiet:
-            print('ldlite: created tables: ' + ', '.join(newtables), file=sys.stderr)
+            print("ldlite: created tables: " + ", ".join(newtables), file=sys.stderr)
         return newtables
 
     def quiet(self, enable):
@@ -498,7 +543,7 @@ class LDLite:
 
         """
         if enable is None:
-            raise ValueError('quiet(None) is invalid')
+            raise ValueError("quiet(None) is invalid")
         if enable and self._verbose:
             raise ValueError('"verbose" and "quiet" modes cannot both be enabled')
         self._quiet = enable
@@ -521,7 +566,7 @@ class LDLite:
         # f = sys.stdout if file is None else file
         f = sys.stdout
         if self._verbose:
-            print('ldlite: reading from table: ' + table, file=sys.stderr)
+            print("ldlite: reading from table: " + table, file=sys.stderr)
         _autocommit(self.db, self.dbtype, False)
         try:
             _select(self.db, self.dbtype, table, columns, limit, f)
@@ -555,7 +600,7 @@ class LDLite:
 
     def to_csv(self, filename, table, header=True):
         """Deprecated; use export_csv()."""
-        raise ValueError('to_csv() is no longer supported: use export_csv()')
+        raise ValueError("to_csv() is no longer supported: use export_csv()")
 
     def export_excel(self, filename, table, header=True):
         """Export a table in the reporting database to an Excel file.
@@ -582,7 +627,7 @@ class LDLite:
 
     def to_xlsx(self, filename, table, header=True):
         """Deprecated; use export_excel()."""
-        raise ValueError('to_xlsx() is no longer supported: use export_excel()')
+        raise ValueError("to_xlsx() is no longer supported: use export_excel()")
 
     def __verbose(self, enable):
         """Configures verbose output.
@@ -596,11 +641,11 @@ class LDLite:
 
         """
         if enable is None:
-            raise ValueError('verbose(None) is invalid')
+            raise ValueError("verbose(None) is invalid")
         if enable and self._quiet:
             raise ValueError('"verbose" and "quiet" modes cannot both be enabled')
         self._verbose = enable
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

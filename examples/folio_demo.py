@@ -5,12 +5,8 @@ import sys
 import ldlite
 
 # Demo sites
-current_release = 'https://folio-lotus-okapi.dev.folio.org/'
 latest_snapshot = 'https://folio-snapshot-okapi.dev.folio.org/'
 
-###############################################################################
-# Select a demo site here:
-selected_site = current_release
 ###############################################################################
 # Note that these demo sites are unavailable at certain times in the evening
 # (Eastern time) or if a bug is introduced and makes one of them unresponsive.
@@ -23,7 +19,7 @@ selected_site = current_release
 ###############################################################################
 
 ld = ldlite.LDLite()
-ld.connect_okapi(url=selected_site, tenant='diku', user='diku_admin', password='admin')
+ld.connect_okapi(url=latest_snapshot, tenant='diku', user='diku_admin', password='admin')
 
 db = ld.connect_db(filename='ldlite.db')
 # For PostgreSQL, use connect_db_postgresql() instead of connect_db():

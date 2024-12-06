@@ -1,4 +1,4 @@
-LDLite
+LDLite-RTR
 ======
 
 Copyright (C) 2021-2022 The Open Library Foundation. This software is
@@ -6,6 +6,9 @@ distributed under the terms of the Apache License, Version 2.0. See
 the file
 [LICENSE](https://github.com/library-data-platform/ldlite/blob/master/LICENSE)
 for more information.
+
+LDLite-RTR is a fork of the original LDLite tool from the Library Data Platform project
+that supports Refresh Token Rotation (RTR) in the Quesnelia release (and later) of FOLIO.
 
 LDLite is a lightweight, open source reporting tool for Okapi-based
 services. It is part of the Library Data Platform project and
