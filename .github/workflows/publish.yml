@@ -26,7 +26,7 @@ jobs:
         poetry install        
     - name: Run tests
       run: |
-        python -m unittest discover -s ./test  -p 'test_*.py'
+        poetry run python -m unittest discover -s ./test  -p 'test_*.py'
   deploy:
     runs-on: ubuntu-latest
     needs: [test]
