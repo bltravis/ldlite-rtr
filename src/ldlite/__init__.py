@@ -194,7 +194,7 @@ class LDLite:
 
     @property
     def okapi_url(self):
-        return self.folio_client.okapi_url
+        return self.folio_client.okapi_url.strip("/")
 
     def _login(self):
         if self._verbose:
@@ -386,7 +386,7 @@ class LDLite:
                 )
             try:
                 j = resp.json()
-            except (json.JSONDecodeError, ValueError) as e:
+            except ValueError as e:
                 raise RuntimeError("received server response: " + resp.text) from e
             if "totalRecords" in j:
                 total_records = j["totalRecords"]
