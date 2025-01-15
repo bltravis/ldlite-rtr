@@ -96,8 +96,6 @@ class LDLite:
         self._quiet = False
         self.dbtype: _DBType = _DBType.UNDEFINED
         self.db = None
-        # self.login_token = None
-        # self.okapi_url = None
         self.okapi_tenant = None
         self.okapi_user = None
         self.okapi_password = None
@@ -340,6 +338,7 @@ class LDLite:
         if not self._quiet:
             print("ldlite: querying: " + path, file=sys.stderr)
         querycopy = _query_dict(query)
+        _query_key = None
         _drop_json_tables(self.db, table)
         _autocommit(self.db, self.dbtype, False)
         try:
@@ -386,6 +385,7 @@ class LDLite:
                 )
             try:
                 j = resp.json()
+                _query_key = list(j.keys())[0]
             except ValueError as e:
                 raise RuntimeError("received server response: " + resp.text) from e
             if "totalRecords" in j:
@@ -395,6 +395,7 @@ class LDLite:
             total = total_records if total_records is not None else 0
             if self._verbose:
                 print("ldlite: estimated row count: " + str(total), file=sys.stderr)
+            querycopy.pop("limit", None)
             # Read result pages
             count = 0
             page = 0
@@ -422,36 +423,18 @@ class LDLite:
                     )
             cur = self.db.cursor()
             try:
-                while True:
-                    offset = page * self.page_size
-                    lim = self.page_size
-                    querycopy["offset"] = str(offset)
-                    querycopy["limit"] = str(lim)
-                    resp = _request_get(
-                        self.okapi_url + path,
-                        params=querycopy,
-                        timeout=self._okapi_timeout,
-                        max_retries=self._okapi_max_retries,
-                        folio_client=self.folio_client,
-                    )
-                    if resp.status_code != 200:
-                        raise RuntimeError(
-                            "HTTP response status code: " + str(resp.status_code)
-                        )
-                    try:
-                        j = resp.json()
-                    except ValueError as e:
-                        raise RuntimeError(
-                            "received server response: " + resp.text
-                        ) from e
-                    if isinstance(j, dict):
-                        data = list(j.values())[0]
-                    else:
-                        data = j
-                    lendata = len(data)
-                    if lendata == 0:
-                        break
-                    for d in data:
+                if "sortBy id" in querycopy.get("query", "") and not limit:
+                    print("ldlite: query sorts by id and no limit set: Using id offset paging")
+                    for idx, d in enumerate(
+                        self.folio_client.folio_get_all_by_id_offset(
+                            path,
+                            _query_key,
+                            query=querycopy.pop("query", "cql.allRecords=1 sortBy id"), 
+                            limit=self.page_size,
+                            **querycopy,
+                        ),
+                        start=1,
+                    ):
                         cur.execute(
                             "INSERT INTO "
                             + _sqlid(table)
@@ -469,11 +452,59 @@ class LDLite:
                             else:
                                 pbartotal += 1
                                 pbar.update(1)
+                else:
+                    while True:
+                        offset = page * self.page_size
+                        lim = self.page_size
+                        querycopy["offset"] = str(offset)
+                        querycopy["limit"] = str(lim)
+                        resp = _request_get(
+                            self.okapi_url + path,
+                            params=querycopy,
+                            timeout=self._okapi_timeout,
+                            max_retries=self._okapi_max_retries,
+                            folio_client=self.folio_client,
+                        )
+                        if resp.status_code != 200:
+                            raise RuntimeError(
+                                "HTTP response status code: " + str(resp.status_code)
+                            )
+                        try:
+                            j = resp.json()
+                        except ValueError as e:
+                            raise RuntimeError(
+                                "received server response: " + resp.text
+                            ) from e
+                        if isinstance(j, dict):
+                            data = list(j.values())[0]
+                        else:
+                            data = j
+                        lendata = len(data)
+                        if lendata == 0:
+                            break
+                        for d in data:
+                            cur.execute(
+                                "INSERT INTO "
+                                + _sqlid(table)
+                                + " VALUES("
+                                + str(count + 1)
+                                + ","
+                                + _encode_sql_str(self.dbtype, json.dumps(d, indent=4))
+                                + ")"
+                            )
+                            count += 1
+                            if not self._quiet:
+                                if pbartotal + 1 > total:
+                                    pbartotal = total
+                                    pbar.update(total - pbartotal)
+                                else:
+                                    pbartotal += 1
+                                    pbar.update(1)
+                            if limit is not None and count == limit:
+                                break
                         if limit is not None and count == limit:
                             break
-                    if limit is not None and count == limit:
-                        break
-                    page += 1
+                        page += 1
             finally:
                 cur.close()
             if not self._quiet:

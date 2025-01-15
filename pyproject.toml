@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ldlite-rtr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lightweight analytics tool for Okapi-based services. Based on the original ldlite package from the Library Data Platform project: https://github.com/library-data-platform/ldlite"
 authors = [
     "Nassib Nassar <nassib@indexdata.com>",
@@ -18,6 +18,9 @@ packages = [
     { include = "ldlite", from = "src" }
 ]
 repository = "https://github.com/bltravis/ldlite"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
 
 [project]
 name = "ldlite"
@@ -46,7 +49,7 @@ duckdb = "^1.1.3"
 psycopg2-binary = "^2.9.10"
 tqdm = "^4.67.1"
 xlsxwriter = "^3.2.0"
-folioclient = "^0.61.1"
+folioclient = "^0.61.3"
 
 [build-system]
 requires = ["poetry-core"]
