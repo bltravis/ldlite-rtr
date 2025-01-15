@@ -423,7 +423,7 @@ class LDLite:
                     )
             cur = self.db.cursor()
             try:
-                if "sortBy id" in querycopy.get("query", "") and not limit:
+                if "sortby id" in querycopy.get("query", "").lower() and not limit:
                     print("ldlite: query sorts by id and no limit set: Using id offset paging")
                     for idx, d in enumerate(
                         self.folio_client.folio_get_all_by_id_offset(
