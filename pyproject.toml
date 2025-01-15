@@ -22,26 +22,26 @@ repository = "https://github.com/bltravis/ldlite"
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
 
-[project]
-name = "ldlite"
-version = "0.1.0"
-description = "Lightweight analytics tool for Okapi-based services. Based on the original ldlite package from the Library Data Platform project: https://github.com/library-data-platform/ldlite"
-authors = [
-    { name = "Nassib Nassar", email = "nassib@indexdata.com" },
-    { name = "Brooks Travis", email = "brooks.travis@gmail.com" }
-]
-readme = "README.md"
-license = "Apache-2.0"
-requires-python = ">=3.9"
-keywords = [ "okapi", "folio", "analytics", "ldlite", "reporting" ]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent"
-]
+# [project]
+# name = "ldlite"
+# version = "0.1.0"
+# description = "Lightweight analytics tool for Okapi-based services. Based on the original ldlite package from the Library Data Platform project: https://github.com/library-data-platform/ldlite"
+# authors = [
+#     { name = "Nassib Nassar", email = "nassib@indexdata.com" },
+#     { name = "Brooks Travis", email = "brooks.travis@gmail.com" }
+# ]
+# readme = "README.md"
+# license = "Apache-2.0"
+# requires-python = ">=3.9"
+# keywords = [ "okapi", "folio", "analytics", "ldlite", "reporting" ]
+# classifiers = [
+#     "Programming Language :: Python :: 3",
+#     "License :: OSI Approved :: Apache Software License",
+#     "Operating System :: OS Independent"
+# ]
 
-[poject.urls]
-Repository = "https://github.com/bltravis/ldlite"
+# [poject.urls]
+# Repository = "https://github.com/bltravis/ldlite"
 
 [tool.poetry.dependencies]
 python = "^3.9,<4.0"
