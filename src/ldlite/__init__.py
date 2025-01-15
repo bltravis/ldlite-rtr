@@ -385,7 +385,8 @@ class LDLite:
                 )
             try:
                 j = resp.json()
-                _query_key = list(j.keys())[0]
+                if isinstance(j, dict):
+                    _query_key = list(j.keys())[0]
             except ValueError as e:
                 raise RuntimeError("received server response: " + resp.text) from e
             if "totalRecords" in j:
@@ -424,6 +425,7 @@ class LDLite:
             cur = self.db.cursor()
             try:
                 if "sortby id" in querycopy.get("query", "").lower() and not limit:
+                    querycopy["query"] = querycopy["query"].replace("sortby id", "sortBy id")
                     print("ldlite: query sorts by id and no limit set: Using id offset paging")
                     for idx, d in enumerate(
                         self.folio_client.folio_get_all_by_id_offset(
